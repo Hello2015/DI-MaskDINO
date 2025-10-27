@@ -91,6 +91,7 @@ class COCOInstanceNewBaselineDatasetMapper:
         *,
         tfm_gens,
         image_format,
+        mask_format="polygon",
     ):
         """
         NOTE: this interface is experimental.
@@ -99,6 +100,7 @@ class COCOInstanceNewBaselineDatasetMapper:
             augmentations: a list of augmentations or deterministic transforms to apply
             tfm_gens: data augmentation
             image_format: an image format supported by :func:`detection_utils.read_image`.
+            mask_format: format of masks, either "polygon" or "bitmask"
         """
         self.tfm_gens = tfm_gens
         logging.getLogger(__name__).info(
@@ -107,6 +109,7 @@ class COCOInstanceNewBaselineDatasetMapper:
 
         self.img_format = image_format
         self.is_train = is_train
+        self.mask_format = mask_format
     
     @classmethod
     def from_config(cls, cfg, is_train=True):
@@ -117,6 +120,7 @@ class COCOInstanceNewBaselineDatasetMapper:
             "is_train": is_train,
             "tfm_gens": tfm_gens,
             "image_format": cfg.INPUT.FORMAT,
+            "mask_format": cfg.INPUT.MASK_FORMAT,
         }
         return ret
 
@@ -166,25 +170,41 @@ class COCOInstanceNewBaselineDatasetMapper:
                 for obj in dataset_dict.pop("annotations")
                 if obj.get("iscrowd", 0) == 0
             ]
-            # NOTE: does not support BitMask due to augmentation
-            # Current BitMask cannot handle empty objects
-            instances = utils.annotations_to_instances(annos, image_shape)
-            # After transforms such as cropping are applied, the bounding box may no longer
-            # tightly bound the object. As an example, imagine a triangle object
-            # [(0,0), (2,0), (0,2)] cropped by a box [(1,0),(2,2)] (XYXY format). The tight
-            # bounding box of the cropped triangle should be [(1,0),(2,1)], which is not equal to
-            # the intersection of original bounding box and the cropping box.
-            if not instances.has('gt_masks'):  # this is to avoid empty annotation
-                instances.gt_masks = PolygonMasks([])
-            instances.gt_boxes = instances.gt_masks.get_bounding_boxes()
-            # Need to filter empty instances first (due to augmentation)
-            instances = utils.filter_empty_instances(instances)
-            # Generate masks from polygon
-            h, w = instances.image_size
-            if hasattr(instances, 'gt_masks'):
-                gt_masks = instances.gt_masks
-                gt_masks = convert_coco_poly_to_mask(gt_masks.polygons, h, w)
-                instances.gt_masks = gt_masks
+            # Process annotations based on mask format
+            if self.mask_format == "bitmask":
+                # For bitmask format, use utils.annotations_to_instances with mask_format argument
+                instances = utils.annotations_to_instances(annos, image_shape, mask_format="bitmask")
+                # After transforms such as cropping are applied, the bounding box may no longer
+                # tightly bound the object. As an example, imagine a triangle object
+                # [(0,0), (2,0), (0,2)] cropped by a box [(1,0),(2,2)] (XYXY format). The tight
+                # bounding box of the cropped triangle should be [(1,0),(2,1)], which is not equal to
+                # the intersection of original bounding box and the cropping box.
+                # if not instances.has('gt_masks'):  # this is to avoid empty annotation
+                # instances.gt_masks = BitMasks(torch.zeros((0, image_shape[0], image_shape[1]), dtype=torch.uint8))
+                instances.gt_masks = instances.gt_masks.tensor
+                # Need to filter empty instances first (due to augmentation)
+                # instances = utils.filter_empty_instances(instances)
+            else:
+                # Default to polygon format
+                # NOTE: does not support BitMask due to augmentation
+                # Current BitMask cannot handle empty objects
+                instances = utils.annotations_to_instances(annos, image_shape)
+                # After transforms such as cropping are applied, the bounding box may no longer
+                # tightly bound the object. As an example, imagine a triangle object
+                # [(0,0), (2,0), (0,2)] cropped by a box [(1,0),(2,2)] (XYXY format). The tight
+                # bounding box of the cropped triangle should be [(1,0),(2,1)], which is not equal to
+                # the intersection of original bounding box and the cropping box.
+                if not instances.has('gt_masks'):  # this is to avoid empty annotation
+                    instances.gt_masks = PolygonMasks([])
+                instances.gt_boxes = instances.gt_masks.get_bounding_boxes()
+                # Need to filter empty instances first (due to augmentation)
+                instances = utils.filter_empty_instances(instances)
+                # Generate masks from polygon
+                h, w = instances.image_size
+                if hasattr(instances, 'gt_masks'):
+                    gt_masks = instances.gt_masks
+                    gt_masks = convert_coco_poly_to_mask(gt_masks.polygons, h, w)
+                    instances.gt_masks = gt_masks
 
             dataset_dict["instances"] = instances
 
