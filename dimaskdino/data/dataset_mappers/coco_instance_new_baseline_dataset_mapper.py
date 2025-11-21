@@ -13,7 +13,6 @@ from detectron2.config import configurable
 from detectron2.data import detection_utils as utils
 from detectron2.data import transforms as T
 from detectron2.data.transforms import TransformGen
-from detectron2.projects.point_rend import ColorAugSSDTransform
 from detectron2.structures import BitMasks, Instances, PolygonMasks
 
 from pycocotools import mask as coco_mask
@@ -50,13 +49,7 @@ def build_transform_gen(cfg, is_train):
     min_scale = cfg.INPUT.MIN_SCALE
     max_scale = cfg.INPUT.MAX_SCALE
 
-    augmentation = [
-        T.ResizeShortestEdge(
-            cfg.INPUT.MIN_SIZE_TRAIN,
-            cfg.INPUT.MAX_SIZE_TRAIN,
-            cfg.INPUT.MIN_SIZE_TRAIN_SAMPLING,
-        )
-    ]
+    augmentation = []
 
     if cfg.INPUT.RANDOM_FLIP != "none":
         augmentation.append(
@@ -66,9 +59,12 @@ def build_transform_gen(cfg, is_train):
             )
         )
 
-    if cfg.INPUT.COLOR_AUG_SSD:
-        augmentation.append(ColorAugSSDTransform(img_format=cfg.INPUT.FORMAT))
-
+    augmentation.extend([
+        T.ResizeScale(
+            min_scale=min_scale, max_scale=max_scale, target_height=image_size, target_width=image_size
+        ),
+        T.FixedSizeCrop(crop_size=(image_size, image_size)),
+    ])
 
     return augmentation
 
