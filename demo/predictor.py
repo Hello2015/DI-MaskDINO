@@ -15,7 +15,7 @@ from detectron2.utils.visualizer import ColorMode, Visualizer
 
 
 class VisualizationDemo(object):
-    def __init__(self, cfg, instance_mode=ColorMode.IMAGE, parallel=False):
+    def __init__(self, cfg, instance_mode=ColorMode.IMAGE, parallel=False,threshold=0.3):
         """
         Args:
             cfg (CfgNode):
@@ -28,7 +28,7 @@ class VisualizationDemo(object):
         )
         self.cpu_device = torch.device("cpu")
         self.instance_mode = instance_mode
-
+        self.confidence_threshold = threshold
         self.parallel = parallel
         if parallel:
             num_gpu = torch.cuda.device_count()
@@ -62,6 +62,15 @@ class VisualizationDemo(object):
                 )
             if "instances" in predictions:
                 instances = predictions["instances"].to(self.cpu_device)
+                instances = instances[instances.scores > self.confidence_threshold]
+                
+                # 根据mask信息重新计算bbox，使其更精确
+                # if hasattr(instances, 'pred_masks') and instances.pred_masks is not None:
+                #     from dimaskdino.utils.box_ops import masks_to_boxes
+                #     # 从mask重新计算bbox
+                #     new_boxes = masks_to_boxes(instances.pred_masks)
+                #     instances.pred_boxes.tensor = new_boxes
+
                 vis_output = visualizer.draw_instance_predictions(predictions=instances)
 
         return predictions, vis_output

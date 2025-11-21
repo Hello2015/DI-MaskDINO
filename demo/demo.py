@@ -7,6 +7,8 @@ import os
 
 # fmt: off
 import sys
+from os import mkdir
+
 sys.path.insert(1, os.path.join(sys.path[0], '..'))
 # fmt: on
 
@@ -25,7 +27,8 @@ from detectron2.utils.logger import setup_logger
 
 from dimaskdino import add_dimaskdino_config
 from predictor import VisualizationDemo
-
+from datasets.opcoco import register_opcoco
+register_opcoco()
 
 # constants
 WINDOW_NAME = "mask2former demo"
@@ -104,8 +107,8 @@ if __name__ == "__main__":
     logger.info("Arguments: " + str(args))
 
     cfg = setup_cfg(args)
-
-    demo = VisualizationDemo(cfg)
+    confidence_threshold = args.confidence_threshold
+    demo = VisualizationDemo(cfg,threshold=confidence_threshold)
 
     if args.input:
         if len(args.input) == 1:
@@ -127,6 +130,8 @@ if __name__ == "__main__":
             )
 
             if args.output:
+                if not os.path.exists(args.output):
+                    mkdir(args.output)
                 if os.path.isdir(args.output):
                     assert os.path.isdir(args.output), args.output
                     out_filename = os.path.join(args.output, os.path.basename(path))
