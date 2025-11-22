@@ -146,6 +146,7 @@ class SetCriterion(nn.Module):
         self.oversample_ratio = oversample_ratio
         self.importance_sample_ratio = importance_sample_ratio
         self.focal_alpha = 0.25
+        self.focal_gamma = 3.0 #2.0
 
         self.panoptic_on = panoptic_on
         self.semantic_ce_loss = semantic_ce_loss
@@ -186,7 +187,7 @@ class SetCriterion(nn.Module):
         target_classes_onehot.scatter_(2, target_classes.unsqueeze(-1), 1)
 
         target_classes_onehot = target_classes_onehot[:,:,:-1]
-        loss_ce = sigmoid_focal_loss(src_logits, target_classes_onehot, num_boxes, alpha=self.focal_alpha, gamma=2) * src_logits.shape[1]
+        loss_ce = sigmoid_focal_loss(src_logits, target_classes_onehot, num_boxes, alpha=self.focal_alpha, gamma=self.focal_gamma) * src_logits.shape[1]
         losses = {'loss_ce': loss_ce}
 
         return losses
