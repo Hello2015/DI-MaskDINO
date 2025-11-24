@@ -13,6 +13,7 @@ from detectron2.config import configurable
 from detectron2.data import detection_utils as utils
 from detectron2.data import transforms as T
 from detectron2.data.transforms import TransformGen
+from detectron2.projects.point_rend import ColorAugSSDTransform
 from detectron2.structures import BitMasks, Instances, PolygonMasks
 
 from pycocotools import mask as coco_mask
@@ -65,6 +66,9 @@ def build_transform_gen(cfg, is_train):
         ),
         T.FixedSizeCrop(crop_size=(image_size, image_size)),
     ])
+
+    if cfg.INPUT.COLOR_AUG_SSD:
+        augmentation.append(ColorAugSSDTransform(img_format=cfg.INPUT.FORMAT))
 
     return augmentation
 
