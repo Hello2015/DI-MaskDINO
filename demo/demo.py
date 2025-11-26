@@ -79,6 +79,18 @@ def get_parser():
         default=[],
         nargs=argparse.REMAINDER,
     )
+    parser.add_argument(
+        "--focus-classes",
+        type=str,
+        default="",
+        help="Comma-separated class names to focus, e.g. 'person,cat'",
+    )
+    parser.add_argument(
+        "--focus-weight",
+        type=float,
+        default=1.5,
+        help="Score weight applied to focus classes during inference",
+    )
     return parser
 
 
@@ -118,7 +130,8 @@ if __name__ == "__main__":
             # use PIL, to be consistent with evaluation
             img = read_image(path, format="BGR")
             start_time = time.time()
-            predictions, visualized_output = demo.run_on_image(img)
+            focus_names = [s.strip() for s in args.focus_classes.split(",")] if getattr(args, "focus_classes", "") else None
+            predictions, visualized_output = demo.run_on_image(img, focus_class_names=focus_names, focus_score_weight=getattr(args, "focus_weight", 1.5))
             logger.info(
                 "{}: {} in {:.2f}s".format(
                     path,

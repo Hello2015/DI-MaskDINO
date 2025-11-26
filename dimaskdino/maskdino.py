@@ -111,6 +111,9 @@ class MaskDINO(nn.Module):
         if not self.semantic_on:
             assert self.sem_seg_postprocess_before_inference
 
+        # dynamic focus classes for inference
+        self._focus_class_ids = None
+        self._focus_score_weight = 1.0
         print('criterion.weight_dict ', self.criterion.weight_dict)
 
     @classmethod
@@ -459,10 +462,31 @@ class MaskDINO(nn.Module):
 
             return panoptic_seg, segments_info
 
+    def set_focus_class_ids(self, focus_ids, weight: float = 1.5):
+        if focus_ids is None or len(focus_ids) == 0:
+            self._focus_class_ids = None
+            self._focus_score_weight = 1.0
+        else:
+            if not torch.is_tensor(focus_ids):
+                focus_ids = torch.tensor(focus_ids, device=self.device, dtype=torch.long)
+            else:
+                focus_ids = focus_ids.to(self.device).long()
+            self._focus_class_ids = focus_ids
+            self._focus_score_weight = float(weight)
+
+    def clear_focus_classes(self):
+        self._focus_class_ids = None
+        self._focus_score_weight = 1.0
+
     def instance_inference(self, mask_cls, mask_pred, mask_box_result):
         # mask_pred is already processed to have the same shape as original input
         image_size = mask_pred.shape[-2:]
         scores = mask_cls.sigmoid()  # [100, 80]
+        # dynamic class-wise weighting before Top-K
+        if getattr(self, "_focus_class_ids", None) is not None and self._focus_class_ids.numel() > 0:
+            class_weights = torch.ones(self.sem_seg_head.num_classes, device=self.device)
+            class_weights[self._focus_class_ids] = self._focus_score_weight
+            scores = scores * class_weights.unsqueeze(0)
         labels = torch.arange(self.sem_seg_head.num_classes, device=self.device).unsqueeze(0).repeat(self.num_queries, 1).flatten(0, 1)
         scores_per_image, topk_indices = scores.flatten(0, 1).topk(self.test_topk_per_image, sorted=False)  # select 100
         labels_per_image = labels[topk_indices]

@@ -36,7 +36,22 @@ class VisualizationDemo(object):
         else:
             self.predictor = DefaultPredictor(cfg)
 
-    def run_on_image(self, image):
+    def _map_class_names_to_ids(self, names):
+        if not names:
+            return []
+        classes = []
+        if hasattr(self.metadata, "thing_classes") and self.metadata.thing_classes:
+            classes += list(self.metadata.thing_classes)
+        elif hasattr(self.metadata, "stuff_classes") and self.metadata.stuff_classes:
+            classes += list(self.metadata.stuff_classes)
+        name_to_id = {name: idx for idx, name in enumerate(classes)}
+        ids = []
+        for n in names:
+            if n in name_to_id:
+                ids.append(name_to_id[n])
+        return ids
+
+    def run_on_image(self, image, focus_class_names=None, focus_score_weight=1.5, per_class_threshold=None):
         """
         Args:
             image (np.ndarray): an image of shape (H, W, C) (in BGR order).
@@ -46,7 +61,14 @@ class VisualizationDemo(object):
             vis_output (VisImage): the visualized image output.
         """
         vis_output = None
+        model = getattr(self.predictor, "model", None)
+        if focus_class_names:
+            focus_ids = self._map_class_names_to_ids(focus_class_names)
+            if model is not None and hasattr(model, "set_focus_class_ids"):
+                model.set_focus_class_ids(focus_ids, weight=focus_score_weight)
         predictions = self.predictor(image)
+        if focus_class_names and model is not None and hasattr(model, "clear_focus_classes"):
+            model.clear_focus_classes()
         # Convert image from OpenCV BGR format to Matplotlib RGB format.
         image = image[:, :, ::-1]
         visualizer = Visualizer(image, self.metadata, instance_mode=self.instance_mode)
@@ -62,14 +84,30 @@ class VisualizationDemo(object):
                 )
             if "instances" in predictions:
                 instances = predictions["instances"].to(self.cpu_device)
-                instances = instances[instances.scores > self.confidence_threshold]
-                
-                # 根据mask信息重新计算bbox，使其更精确
-                # if hasattr(instances, 'pred_masks') and instances.pred_masks is not None:
-                #     from dimaskdino.utils.box_ops import masks_to_boxes
-                #     # 从mask重新计算bbox
-                #     new_boxes = masks_to_boxes(instances.pred_masks)
-                #     instances.pred_boxes.tensor = new_boxes
+                if per_class_threshold:
+                    classes = instances.pred_classes
+                    scores = instances.scores
+                    ids_thr = {}
+                    for name, thr in per_class_threshold.items():
+                        mapped = self._map_class_names_to_ids([name])
+                        if mapped:
+                            ids_thr[mapped[0]] = float(thr)
+                    keep = torch.zeros_like(scores, dtype=torch.bool)
+                    for i in range(len(scores)):
+                        cls_id = int(classes[i].item())
+                        thr = ids_thr.get(cls_id, self.confidence_threshold)
+                        keep[i] = scores[i] > thr
+                    instances = instances[keep]
+                else:
+                    instances = instances[instances.scores > self.confidence_threshold]
+
+
+                    # 根据mask信息重新计算bbox，使其更精确
+                    if hasattr(instances, 'pred_masks') and instances.pred_masks is not None:
+                        from dimaskdino.utils.box_ops import masks_to_boxes
+                        # 从mask重新计算bbox
+                        new_boxes = masks_to_boxes(instances.pred_masks)
+                        instances.pred_boxes.tensor = new_boxes
 
                 vis_output = visualizer.draw_instance_predictions(predictions=instances)
 
