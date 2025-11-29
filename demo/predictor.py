@@ -7,6 +7,7 @@ from collections import deque
 
 import cv2
 import torch
+import numpy as np
 
 from detectron2.data import MetadataCatalog
 from detectron2.engine.defaults import DefaultPredictor
@@ -105,7 +106,49 @@ class VisualizationDemo(object):
                     # 根据mask信息重新计算bbox，使其更精确
                     if hasattr(instances, 'pred_masks') and instances.pred_masks is not None:
                         from dimaskdino.utils.box_ops import masks_to_boxes
-                        # 从mask重新计算bbox
+                        # 对每个mask，保留最大连通区域及距离较近的其他区域
+                        cleaned_masks = []
+                        distance_threshold = 80  # 距离阈值（像素），可根据需要调整
+                        for mask in instances.pred_masks:
+                            # 将mask转换为numpy数组
+                            mask_np = mask.cpu().numpy().astype(np.uint8)
+                            # 查找连通区域
+                            num_labels, labels = cv2.connectedComponents(mask_np)
+                            if num_labels <= 1:  # 没有前景区域
+                                cleaned_masks.append(mask)
+                                continue
+                            # 计算每个连通区域的面积和中心点（跳过背景label=0）
+                            regions_info = []
+                            for label_id in range(1, num_labels):
+                                region_mask = (labels == label_id)
+                                area = np.sum(region_mask)
+                                # 计算区域中心点
+                                coords = np.argwhere(region_mask)
+                                center = coords.mean(axis=0)
+                                regions_info.append({
+                                    'label': label_id,
+                                    'area': area,
+                                    'center': center
+                                })
+                            # 找到面积最大的区域
+                            regions_info.sort(key=lambda x: x['area'], reverse=True)
+                            max_region = regions_info[0]
+                            max_center = max_region['center']
+                            # 保留最大区域及与其距离较近的区域
+                            keep_labels = [max_region['label']]
+                            for region in regions_info[1:]:
+                                # 计算与最大区域中心的欧氏距离
+                                distance = np.linalg.norm(region['center'] - max_center)
+                                if distance <= distance_threshold:
+                                    keep_labels.append(region['label'])
+                            # 创建清理后的mask
+                            cleaned_mask = np.zeros_like(mask_np)
+                            for label_id in keep_labels:
+                                cleaned_mask[labels == label_id] = 1
+                            cleaned_masks.append(torch.from_numpy(cleaned_mask).to(mask.device))
+                        # 将清理后的masks转换回tensor
+                        instances.pred_masks = torch.stack(cleaned_masks)
+                        # 从清理后的mask重新计算bbox
                         new_boxes = masks_to_boxes(instances.pred_masks)
                         instances.pred_boxes.tensor = new_boxes
 

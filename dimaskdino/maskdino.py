@@ -487,6 +487,8 @@ class MaskDINO(nn.Module):
             class_weights = torch.ones(self.sem_seg_head.num_classes, device=self.device)
             class_weights[self._focus_class_ids] = self._focus_score_weight
             scores = scores * class_weights.unsqueeze(0)
+            #scores中的值如果超过了1，则将其置为1
+            scores = scores.clamp(max=1.0)
         labels = torch.arange(self.sem_seg_head.num_classes, device=self.device).unsqueeze(0).repeat(self.num_queries, 1).flatten(0, 1)
         scores_per_image, topk_indices = scores.flatten(0, 1).topk(self.test_topk_per_image, sorted=False)  # select 100
         labels_per_image = labels[topk_indices]
