@@ -1,0 +1,183 @@
+_BASE_: Base_DIMaskDINO_COCO.yaml
+
+# ========================================================================
+# ConvNeXt-Tiny Configuration for Medical Surgical Instruments Segmentation
+# ========================================================================
+# This configuration is optimized for:
+# - 20-30 surgical instruments with dense, cluttered placement
+# - Partially occluded instruments
+# - Various instrument sizes and aspect ratios (especially thin/long tools)
+# - 500 total instrument categories
+# ========================================================================
+
+MODEL:
+  # ConvNeXt-Tiny Backbone
+  BACKBONE:
+    FREEZE_AT: 0
+    NAME: "D2ConvNeXt"
+  
+  # Pretrained weights - ConvNeXt-Tiny converted to Detectron2 format
+  # Already converted and verified weights using tools/convert_convnext_to_d2.py
+  WEIGHTS: "tools/convnext_tiny_22k_1k_224_d2.pth"  # Converted ConvNeXt-Tiny weights (verified compatible)
+  
+  PIXEL_MEAN: [123.675, 116.280, 103.530]
+  PIXEL_STD: [58.395, 57.120, 57.375]
+  
+  # ConvNeXt-Tiny specific settings
+  CONVNEXT:
+    DEPTHS: [3, 3, 9, 3]  # ConvNeXt-Tiny architecture
+    DIMS: [96, 192, 384, 768]  # Channel dimensions for each stage
+    DROP_PATH_RATE: 0.2  # Increased for better regularization with 500 classes
+    LAYER_SCALE_INIT_VALUE: 1.0e-6
+    OUT_FEATURES: ["res2", "res3", "res4", "res5"]
+  
+  # Multi-scale features for handling various instrument sizes
+  SEM_SEG_HEAD:
+    NAME: "MaskDINOHead"
+    IGNORE_VALUE: 255
+    NUM_CLASSES: 20  # 500 surgical instrument categories
+    LOSS_WEIGHT: 1.0
+    CONVS_DIM: 256
+    MASK_DIM: 256
+    NORM: "GN"
+    
+    # Pixel decoder with 4-scale features for multi-scale instruments
+    PIXEL_DECODER_NAME: "MaskDINOEncoder"
+    DIM_FEEDFORWARD: 2048
+    NUM_FEATURE_LEVELS: 4  # Use 4 scales for better multi-scale detection
+    TOTAL_NUM_FEATURE_LEVELS: 4
+    IN_FEATURES: ["res2", "res3", "res4", "res5"]
+    DEFORMABLE_TRANSFORMER_ENCODER_IN_FEATURES: ["res3", "res4", "res5"]
+    COMMON_STRIDE: 4
+    TRANSFORMER_ENC_LAYERS: 6
+    FEATURE_ORDER: "low2high"
+  
+  MaskDINO:
+    TRANSFORMER_DECODER_NAME: "DIMaskDINODecoder"
+    DEEP_SUPERVISION: True
+    NO_OBJECT_WEIGHT: 0.1
+    
+    # Adjusted weights for dense, cluttered scenes
+    CLASS_WEIGHT: 4.0
+    MASK_WEIGHT: 5.0
+    DICE_WEIGHT: 5.0
+    BOX_WEIGHT: 5.0
+    GIOU_WEIGHT: 2.0
+    
+    HIDDEN_DIM: 256
+    
+    # Increased queries for dense scenes (20-30 instruments)
+    NUM_OBJECT_QUERIES: 400  # Increased from 300 to handle more instruments
+    FIRST_SELECTED_QUERIES: 800  # Increased accordingly
+    NUM_GUIDING_TOKENS: 100  # Increased for better guidance in cluttered scenes
+    
+    NHEADS: 8
+    DROPOUT: 0.1
+    DIM_FEEDFORWARD: 2048
+    ENC_LAYERS: 0
+    PRE_NORM: False
+    ENFORCE_INPUT_PROJ: False
+    SIZE_DIVISIBILITY: 32
+    
+    DEC_LAYERS: 9  # Increased decoder layers for complex scenes
+    TI_LAYERS: 3  # Increased token interaction layers for better feature interaction
+    
+    # Increased sampling points for detailed masks (especially for thin instruments)
+    TRAIN_NUM_POINTS: 16384  # Increased from 12544
+    OVERSAMPLE_RATIO: 3.0
+    IMPORTANCE_SAMPLE_RATIO: 0.75
+    
+    EVAL_FLAG: 1
+    INITIAL_PRED: True
+    TWO_STAGE: True
+    DN: "seg"
+    DN_NUM: 150  # Increased denoising queries for 500 classes
+    INITIALIZE_BOX_TYPE: 'mask2box'
+    
+    # Cost weights for matching
+    COST_CLASS_WEIGHT: 4.0
+    COST_DICE_WEIGHT: 5.0
+    COST_MASK_WEIGHT: 5.0
+    COST_BOX_WEIGHT: 5.0
+    COST_GIOU_WEIGHT: 2.0
+    
+    TEST:
+      SEMANTIC_ON: False
+      INSTANCE_ON: True
+      PANOPTIC_ON: False
+      OVERLAP_THRESHOLD: 0.6  # Reduced for handling occlusions better
+      OBJECT_MASK_THRESHOLD: 0.3  # Adjusted for better precision
+
+# Dataset configuration - customize for your medical instrument dataset
+DATASETS:
+  TRAIN: ("opcoco38_train",)  # Replace with your dataset name
+  TEST: ("opcoco38_val",)     # Replace with your dataset name
+
+# Training configuration
+SOLVER:
+  IMS_PER_BATCH: 1  # Reduced batch size due to increased model complexity
+  BASE_LR: 0.0001
+  
+  # Learning rate schedule for 50 epochs (adjust based on dataset size)
+  # Assuming ~5000 images, with batch size 8: 5000/8 = 625 iters/epoch
+  # 50 epochs = 31250 iters
+  STEPS: (25000, 28125)  # LR decay at epoch 40 and 45
+  MAX_ITER: 31250  # 50 epochs
+  
+  WARMUP_FACTOR: 1.0
+  WARMUP_ITERS: 500  # Warmup for first epoch
+  WEIGHT_DECAY: 0.05
+  OPTIMIZER: "ADAMW"
+  BACKBONE_MULTIPLIER: 0.1  # Lower learning rate for pretrained backbone
+  
+  CLIP_GRADIENTS:
+    ENABLED: True
+    CLIP_TYPE: "full_model"
+    CLIP_VALUE: 0.01
+    NORM_TYPE: 2.0
+  
+  AMP:
+    ENABLED: True  # Mixed precision training for efficiency
+
+# Input configuration
+INPUT:
+  IMAGE_SIZE: 1024  # Large size for detecting small/thin instruments
+  MIN_SCALE: 0.2  # Less aggressive scaling to preserve instrument details
+  MAX_SCALE: 2.0
+  FORMAT: "RGB"
+  DATASET_MAPPER_NAME: "coco_instance_lsj"
+  MASK_FORMAT: "bitmask"
+  
+  # Optional: Enable copy-paste augmentation for handling occlusions
+  # DATASET_MAPPER_NAME: "coco_instance_copy_paste"
+  
+  # Color augmentation
+  COLOR_AUG_SSD: True  # Enable color augmentation for robustness
+
+# Evaluation
+TEST:
+  EVAL_PERIOD: 1000  # Evaluate every 1000 iterations
+  DETECTIONS_PER_IMAGE: 50  # Allow up to 50 detections (for 20-30 instruments + margin)
+
+# Data loader
+DATALOADER:
+  FILTER_EMPTY_ANNOTATIONS: True
+  NUM_WORKERS: 4
+  SAMPLER_TRAIN: "TrainingSampler"  # Use standard sampler
+  ASPECT_RATIO_GROUPING: True  # Group by aspect ratio for efficiency
+
+# Additional settings
+VERSION: 2
+OUTPUT_DIR: "./output/medical_instruments_convnext_tiny"
+
+# ========================================================================
+# Notes for usage:
+# ========================================================================
+# 1. Prepare your dataset in COCO format with 500 categories
+# 2. Register your dataset in dimaskdino/data/datasets/__init__.py
+# 3. Download and convert ConvNeXt-Tiny pretrained weights
+# 4. Adjust SOLVER.MAX_ITER based on your dataset size:
+#    MAX_ITER = (num_images / batch_size) * num_epochs
+# 5. Consider using copy-paste augmentation for occlusion handling
+# 6. Monitor training and adjust hyperparameters as needed
+# ========================================================================

@@ -1,0 +1,51 @@
+# Copy-Paste数据增强配置示例
+# 将此配置添加到您的训练配置文件中
+
+# 数据增强配置
+INPUT:
+  # 基本图像格式
+  FORMAT: "BGR"
+  MASK_FORMAT: "polygon"
+  
+  # Copy-Paste增强配置
+  COPY_PASTE_PROB: 0.5  # 应用Copy-Paste增强的概率
+  USE_POISSON_BLEND: True  # 是否使用泊松融合（更自然的融合效果）
+  MAX_COPY_OBJECTS: 3     # 每次增强最多复制的对象数量
+  
+  # 基本几何变换
+  IMAGE_SIZE: 1024
+  MIN_SCALE: 0.1
+  MAX_SCALE: 2.0
+  RANDOM_FLIP: "horizontal"
+
+# 数据加载器配置
+DATALOADER:
+  NUM_WORKERS: 4
+  BATCH_SIZE: 2  # Copy-Paste增强需要批处理大小至少为2
+
+# 数据集映射器配置（使用新的Copy-Paste增强器）
+DATASETS:
+  TRAIN: ("coco_2017_train",)
+  TEST: ("coco_2017_val",)
+
+# 训练配置
+SOLVER:
+  IMS_PER_BATCH: 16
+  BASE_LR: 0.0001
+  STEPS: (210000, 250000)
+  MAX_ITER: 270000
+
+# 模型配置
+MODEL:
+  META_ARCHITECTURE: "MaskDINO"
+  WEIGHTS: ""
+  
+# 使用新的数据集映射器
+DATASET_MAPPER: "COCOInstanceCopyPasteDatasetMapper"
+
+# 训练器配置（可选，如果需要自定义训练循环）
+TRAINER:
+  NAME: "DefaultTrainer"
+
+# 输出配置
+OUTPUT_DIR: "./output_copy_paste"

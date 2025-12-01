@@ -69,7 +69,8 @@ from detectron2.engine import (
 )
 import weakref
 
-
+from datasets.opcoco import register_opcoco
+register_opcoco()
 class Trainer(DefaultTrainer):
     """
     Extension of the Trainer class adapted to MaskFormer.

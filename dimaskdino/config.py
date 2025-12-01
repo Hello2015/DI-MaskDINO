@@ -148,4 +148,12 @@ def add_dimaskdino_config(cfg):
     cfg.MODEL.SWIN.OUT_FEATURES = ["res2", "res3", "res4", "res5"]
     cfg.MODEL.SWIN.USE_CHECKPOINT = False
 
+    # ConvNeXt backbone
+    cfg.MODEL.CONVNEXT = CN()
+    cfg.MODEL.CONVNEXT.DEPTHS = [3, 3, 9, 3]  # for ConvNeXt-Tiny
+    cfg.MODEL.CONVNEXT.DIMS = [96, 192, 384, 768]  # for ConvNeXt-Tiny
+    cfg.MODEL.CONVNEXT.DROP_PATH_RATE = 0.1
+    cfg.MODEL.CONVNEXT.LAYER_SCALE_INIT_VALUE = 1e-6
+    cfg.MODEL.CONVNEXT.OUT_FEATURES = ["res2", "res3", "res4", "res5"]
+
     cfg.Default_loading=True  # a bug in my d2. resume use this; if first time ResNet load, set it false

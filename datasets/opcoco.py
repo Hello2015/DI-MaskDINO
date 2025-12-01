@@ -9,10 +9,10 @@ sysCoco = COCO_CATEGORIES.copy()
 # 使用labels中的标签替换sysCoco中的name
 
 def register_opcoco():
-    register_coco_instances("opcoco_train", {},
+    register_coco_instances("opcoco38_train", {},
                             "coco/opcoco38/annotations/test.json",
                             "coco/opcoco38/images/test")
-    register_coco_instances("opcoco_val", {},
+    register_coco_instances("opcoco38_val", {},
                             "coco/opcoco38/annotations/val.json",
                             "coco/opcoco38/images/val")
     # 读取datasets/opcoco/annotations/test.json,获取其中的category信息
